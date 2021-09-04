@@ -9,7 +9,7 @@ library(tidyverse)
 library(meta)
  
 #----DATA PREPARATION----#
-meta_data<-readWorksheetFromFile("~/meta_data.xlsx", sheet=1, header=T)%>%
+meta_data<-readWorksheetFromFile("C:/Users/laure/OneDrive/Documents/Summer_Research_2021/India/microecon/metaanalysis/git_upload/meta_data.xlsx", sheet=1, header=T)%>%
            mutate(authoryear=paste(name,year,sep=" "),
                   midpoint_date=start_date + floor((as.Date(end_date)-as.Date(start_date))/2),
                   midpoint_month=lubridate::month(midpoint_date),
@@ -19,16 +19,23 @@ meta_data<-readWorksheetFromFile("~/meta_data.xlsx", sheet=1, header=T)%>%
                   seroprevalence=seroprevalence/100,
                   lower=lower/100,
                   upper=upper/100,
+                  #obtain standard error of sero
+                  se_sero=(upper-lower)/3.92,
                   #create Age Adjusted Population variable
                   population=tot_population_millions*1000000*(age_proportion/100),
                   #create Estimated Total Cumulative Infections variable as denominator for ifr
                   total_estimated_cases=floor((population)*seroprevalence),
                   #create IFR1 variable as Reported Deaths divided by Estimated Total Cumulative Infections
                   ifr1=(deaths/total_estimated_cases),
+                  log_ifr1=log(ifr1),
+                  #obtain standard error of log IFR1
+                  se_lifr1 = se_sero/seroprevalence,
                   #create lower bound of IFR1 95% confidence interval
-                  lower_ifr1=ifr1-(1.96*sqrt((ifr1*(1-ifr1))/total_estimated_cases)),
+                  lower_lifr1=log_ifr1-(1.96*se_lifr1),
+                  lower_ifr1=exp(lower_lifr1),
                   #create upper bound of IFR1 95% confidence interval
-                  upper_ifr1=ifr1+(1.96*sqrt((ifr1*(1-ifr1))/total_estimated_cases))) %>%
+                  upper_lifr1=log_ifr1+(1.96*se_lifr1),
+                  upper_ifr1=exp(upper_lifr1)) %>%
           mutate(
                   #add stars to denote which IFRs are precalculated; *=IFR1 precalc, **=IFR2 precalc, ***=IFR1 & IFR2 precalc.
                   locationdate=ifelse((is.na(ifr1_precalc)==F)&(is.na(ifr2_precalc)==T),paste(locationdate,"*",sep=""),
@@ -198,7 +205,6 @@ meta1b = metagen(log(ifr2_L),
 #transform back to non-log scale
 meta1b <- update(meta1b, sm="PLN")
 pdf(file = "forestplot_ifr2_L_india.pdf", width = 10, height = 12)
-grid.text("Nationwide IFR2 for India w Lower URF", .5, .9, gp=gpar(cex=2))
 forest(meta1b,
        comb.fixed=F, prediction=T,
        digits=3,pscale=100,xlim=c(0,2),
